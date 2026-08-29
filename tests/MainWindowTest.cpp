@@ -1,9 +1,11 @@
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QImage>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
@@ -69,6 +71,49 @@ void answerNextMessageBoxWith(QMessageBox::StandardButton role) {
             button->click();
         }
     });
+}
+
+// Like answerNextMessageBoxWith, but polls until a QMessageBox offering
+// `role` is the active modal widget, skipping any other dialog in between.
+// Needed when more than one QMessageBox can appear in sequence (e.g. Reduce
+// All Images' confirmation, then its completion notice) and a plain
+// singleShot(0, ...) can't tell which one is up yet.
+void answerEventualMessageBoxWith(QMessageBox::StandardButton role) {
+    auto *timer = new QTimer();
+    timer->setInterval(0);
+    QObject::connect(timer, &QTimer::timeout, [timer, role] {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            return;
+        }
+        auto *button = box->button(role);
+        if (!button) {
+            return;  // a different dialog is up right now - keep polling
+        }
+        button->click();
+        timer->stop();
+        timer->deleteLater();
+    });
+    timer->start();
+}
+
+// Drives MainWindow's "&Max Save Size..." action end-to-end.
+void setMaxSizeVia(MainWindow &window, int width, int height) {
+    QTimer::singleShot(0, [width, height] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(dialog);
+        auto *checkbox = dialog->findChild<QCheckBox *>();
+        QVERIFY(checkbox);
+        checkbox->setChecked(true);
+        const auto edits = dialog->findChildren<QLineEdit *>();
+        QCOMPARE(edits.size(), 2);
+        edits[0]->setText(QString::number(width));
+        edits[1]->setText(QString::number(height));
+        dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+    });
+    QAction *action = findActionByText(&window, "&Max Save Size...");
+    QVERIFY(action);
+    action->trigger();
 }
 }  // namespace
 
@@ -225,6 +270,51 @@ private slots:
 
         QVERIFY(!window.isWindowModified());
         QCOMPARE(QDir(target.path()).entryList(QDir::Files), QStringList({"a_00.png"}));
+    }
+
+    void reduceAllImages_shrinksOversizedAndLeavesSmallUnchanged() {
+        QTemporaryDir source;
+        QTemporaryDir target;
+        QVERIFY(source.isValid() && target.isValid());
+        QVERIFY(!writeTestImage(source.path(), "big.png", 400, 400).isEmpty());
+        QVERIFY(!writeTestImage(source.path(), "small.png", 50, 50).isEmpty());
+
+        MainWindow window;
+        window.resize(700, 500);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        selectFoldersVia(window, source.path(), target.path());
+        setMaxSizeVia(window, 100, 100);
+
+        answerEventualMessageBoxWith(QMessageBox::Yes);  // the confirmation prompt
+        answerEventualMessageBoxWith(QMessageBox::Ok);   // the completion notice
+        findActionByText(&window, "Reduce All Images")->trigger();
+
+        const QStringList written = QDir(target.path()).entryList(QDir::Files);
+        QCOMPARE(written.size(), 2);
+        QVERIFY(written.contains("big_00.png"));
+        QVERIFY(written.contains("small_00.png"));
+
+        QCOMPARE(QImage(target.path() + "/big_00.png").size(), QSize(100, 100));
+        QCOMPARE(QImage(target.path() + "/small_00.png").size(), QSize(50, 50));  // unchanged, well under the cap
+    }
+
+    void reduceAllImages_warnsAndDoesNothingWithoutAMaxSize() {
+        QTemporaryDir source;
+        QTemporaryDir target;
+        QVERIFY(source.isValid() && target.isValid());
+        QVERIFY(!writeTestImage(source.path(), "a.png", 100, 100).isEmpty());
+
+        MainWindow window;
+        window.resize(700, 500);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        selectFoldersVia(window, source.path(), target.path());
+
+        answerEventualMessageBoxWith(QMessageBox::Ok);  // the warning dialog
+        findActionByText(&window, "Reduce All Images")->trigger();
+
+        QVERIFY(QDir(target.path()).entryList(QDir::Files).isEmpty());
     }
 
 private:

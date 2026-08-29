@@ -8,6 +8,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFrame>
+#include <QImage>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
@@ -20,6 +22,8 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QtMath>
+#include <algorithm>
 #include <cmath>
 
 #include "CanvasWidget.h"
@@ -66,18 +70,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     buildLayout();
     buildMenus();
 
-    connect(canvas_, &CanvasWidget::interactionChanged, this, &MainWindow::updateMessage);
+    connect(canvas_, &CanvasWidget::interactionChanged, this, &MainWindow::updateStatusPanels);
     connect(canvas_, &CanvasWidget::processAndSaveRequested, this, &MainWindow::processAndSave);
-    connect(&document_, &ImageDocument::imageChanged, this, &MainWindow::updateMessage);
+    connect(&document_, &ImageDocument::imageChanged, this, &MainWindow::updateStatusPanels);
     connect(&document_, &ImageDocument::imageChanged, this, &MainWindow::updateWindowTitle);
-    connect(&document_, &ImageDocument::imageLoaded, this, &MainWindow::updateMessage);
+    connect(&document_, &ImageDocument::imageLoaded, this, &MainWindow::updateStatusPanels);
     connect(&document_, &ImageDocument::imageLoaded, this, &MainWindow::updateWindowTitle);
     connect(tree_, &ImageTreeWidget::pathSelected, this, &MainWindow::onTreePathSelected);
 
     tree_->setFolders(sourceFolder_, targetFolder_);
     tree_->refresh(currentPath_);
 
-    updateMessage();
+    updateStatusPanels();
     updateWindowTitle();
 }
 
@@ -183,7 +187,16 @@ void MainWindow::buildLayout() {
     setCentralWidget(central);
 
     statusMessage_ = new QLabel(this);
+    statusName_ = new QLabel(this);
+    statusName_->setMinimumWidth(280);
+    statusOutput_ = new QLabel(this);
+    statusOutput_->setMinimumWidth(120);
+    for (QLabel *label : {statusMessage_, statusName_, statusOutput_}) {
+        label->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+    }
     statusBar()->addWidget(statusMessage_, 1);
+    statusBar()->addWidget(statusName_);
+    statusBar()->addWidget(statusOutput_);
 }
 
 void MainWindow::buildMenus() {
@@ -194,6 +207,8 @@ void MainWindow::buildMenus() {
     connect(fileMenu->addAction("&Max Save Size..."), &QAction::triggered, this, &MainWindow::editMaxSize);
     fileMenu->addSeparator();
     fileMenu->addAction(saveAction_);
+    fileMenu->addSeparator();
+    connect(fileMenu->addAction("Reduce All Images"), &QAction::triggered, this, &MainWindow::reduceAllImages);
     fileMenu->addSeparator();
     connect(fileMenu->addAction("E&xit"), &QAction::triggered, this, &QMainWindow::close);
 
@@ -273,7 +288,7 @@ void MainWindow::editMaxSize() {
     maxHeight_ = dialog.maxHeight();
     persistConfig();
     updateMaxSizeLabelText();
-    updateMessage();
+    updateStatusPanels();
 }
 
 void MainWindow::onTreePathSelected(const QString &path) {
@@ -386,6 +401,94 @@ void MainWindow::showAbout() {
     dialog.exec();
 }
 
+void MainWindow::reduceAllImages() {
+    if (!(maxSizeEnabled_ && maxWidth_ && maxHeight_)) {
+        QMessageBox::warning(this, "Reduce All Images", "Please set a Max Save Size first (File > Max Save Size...).");
+        return;
+    }
+    if (targetFolder_.isEmpty() || !QDir(targetFolder_).exists()) {
+        QMessageBox::warning(this, "Reduce All Images", "Please set a processed folder first.");
+        return;
+    }
+    const QDir sourceDir(sourceFolder_);
+    if (!sourceDir.exists()) {
+        QMessageBox::critical(this, "Error", QString("Could not read folder:\n%1").arg(sourceFolder_));
+        return;
+    }
+    QStringList sourceNames;
+    for (const QString &name : sourceDir.entryList(QDir::Files)) {
+        if (isImageFile(name)) {
+            sourceNames << name;
+        }
+    }
+    std::sort(sourceNames.begin(), sourceNames.end());
+    if (sourceNames.isEmpty()) {
+        QMessageBox::information(this, "Reduce All Images", "No images found in the source folder.");
+        return;
+    }
+
+    const auto reply = QMessageBox::question(
+        this, "Reduce All Images",
+        QString("This copies every image in the source folder to the processed folder, shrinking any larger "
+                "than the Max Save Size (%1 x %2) to fit while leaving smaller ones unchanged - handy for "
+                "getting camera photos ready for web pages. %3 image(s) will be processed. Continue?")
+            .arg(maxWidth_)
+            .arg(maxHeight_)
+            .arg(sourceNames.size()));
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+
+    QStringList failures;
+    for (int i = 0; i < sourceNames.size(); ++i) {
+        const QString &name = sourceNames[i];
+        const QString sourcePath = sourceDir.filePath(name);
+        QImage image(sourcePath);
+        if (image.isNull()) {
+            failures << QString("%1: could not load image").arg(name);
+            continue;
+        }
+        const int width = image.width();
+        const int height = image.height();
+        const double scale =
+            std::min({static_cast<double>(maxWidth_) / width, static_cast<double>(maxHeight_) / height, 1.0});
+        int outWidth = width;
+        int outHeight = height;
+        if (scale < 1.0) {
+            outWidth = std::max(1, qRound(width * scale));
+            outHeight = std::max(1, qRound(height * scale));
+            image = image.scaled(outWidth, outHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        }
+        const QFileInfo info(name);
+        const QString root = info.completeBaseName();
+        const QString ext = info.suffix().isEmpty() ? QString() : "." + info.suffix();
+        if ((ext.compare(".jpg", Qt::CaseInsensitive) == 0 || ext.compare(".jpeg", Qt::CaseInsensitive) == 0) &&
+            image.hasAlphaChannel()) {
+            image = image.convertToFormat(QImage::Format_RGB32);
+        }
+        const int suffix = nextSuffix(targetFolder_, root, ext);
+        const QString outPath =
+            QDir(targetFolder_).filePath(QString("%1_%2%3").arg(root).arg(suffix, 2, 10, QChar('0')).arg(ext));
+        if (!image.save(outPath)) {
+            failures << QString("%1: could not save image").arg(name);
+            continue;
+        }
+        tree_->refreshProcessedChildren(sourcePath);
+        setMessage(QString("Reducing %1 of %2: %3").arg(i + 1).arg(sourceNames.size()).arg(name));
+        statusName_->setText(QString("%1 (%2 x %3)").arg(name).arg(width).arg(height));
+        statusOutput_->setText(QString("Save size: %1 x %2").arg(outWidth).arg(outHeight));
+        QCoreApplication::processEvents();
+    }
+
+    setMessage("Reduce All Images complete.");
+    updateStatusPanels();
+    if (!failures.isEmpty()) {
+        QMessageBox::warning(this, "Reduce All Images", "Finished with some errors:\n\n" + failures.join("\n"));
+    } else {
+        QMessageBox::information(this, "Reduce All Images", QString("Processed %1 image(s).").arg(sourceNames.size()));
+    }
+}
+
 void MainWindow::updateMessage() {
     if (canvas_->isStraightenActive()) {
         statusMessage_->setText(QString("Straighten: %1   |   Drag either end of the line to straighten, "
@@ -402,6 +505,25 @@ void MainWindow::updateMessage() {
         return;
     }
     statusMessage_->setText(statusMessageBase_);
+}
+
+void MainWindow::updateStatusPanels() {
+    if (currentPath_.isEmpty() || document_.current().isNull()) {
+        statusName_->setText(QString());
+        statusOutput_->setText(QString());
+    } else {
+        const QImage &image = document_.current();
+        const QString dirtyMarker = hasUnsavedChanges() ? " *" : "";
+        statusName_->setText(QString("%1 (%2 x %3)%4")
+                                  .arg(QFileInfo(currentPath_).fileName())
+                                  .arg(image.width())
+                                  .arg(image.height())
+                                  .arg(dirtyMarker));
+        const QSize saveSize =
+            document_.plannedSaveSize(maxSizeEnabled_, maxWidth_, maxHeight_, canvas_->selectionImageSize());
+        statusOutput_->setText(QString("Save size: %1 x %2").arg(saveSize.width()).arg(saveSize.height()));
+    }
+    updateMessage();
 }
 
 void MainWindow::updateWindowTitle() {

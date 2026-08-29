@@ -34,7 +34,9 @@ private slots:
     void processAndSave();
     void showUserGuide();
     void showAbout();
+    void reduceAllImages();
     void updateMessage();
+    void updateStatusPanels();
     void updateWindowTitle();
 
 private:
@@ -58,6 +60,8 @@ private:
     CanvasWidget *canvas_;
     ImageTreeWidget *tree_;
     QLabel *statusMessage_;
+    QLabel *statusName_;
+    QLabel *statusOutput_;
     QLabel *sourceFolderLabel_;
     QLabel *targetFolderLabel_;
     QPushButton *maxSizeButton_;
