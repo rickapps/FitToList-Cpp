@@ -44,6 +44,12 @@ public:
     void startStraighten();
     void cancelStraighten();
 
+    // Commits the pending drag angle (if any) and ends the session, unlike a
+    // normal drag-release which keeps it open for fine-tuning. Used when the
+    // straighten tool is still open at a point that requires it to be fully
+    // resolved one way or the other, such as switching to a different image.
+    void finalizeStraighten();
+
 signals:
     // Selection box or pending straighten angle changed - status/message text
     // driven by this canvas should refresh.

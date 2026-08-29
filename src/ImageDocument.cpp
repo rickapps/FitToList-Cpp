@@ -53,6 +53,15 @@ bool ImageDocument::load(const QString &path, QString *error) {
     return true;
 }
 
+void ImageDocument::clear() {
+    original_ = QImage();
+    current_ = QImage();
+    dirty_ = false;
+    straightenBase_ = QImage();
+    straightenTotalAngle_ = 0.0;
+    emit imageLoaded();
+}
+
 bool ImageDocument::crop(const QRect &imageSpaceRect) {
     if (current_.isNull()) {
         return false;
@@ -175,5 +184,7 @@ bool ImageDocument::saveTo(const QString &path, QSize targetSize, QString *error
         }
         return false;
     }
+    dirty_ = false;
+    emit imageChanged();
     return true;
 }

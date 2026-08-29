@@ -18,6 +18,11 @@ public:
 
     bool load(const QString &path, QString *error = nullptr);
 
+    // Drops the loaded image entirely (no image, nothing to show), for when
+    // the source folder changes out from under whatever was loaded. Distinct
+    // from reset(), which keeps original() and discards edits back to it.
+    void clear();
+
     QImage original() const { return original_; }
     QImage current() const { return current_; }
     bool isDirty() const { return dirty_; }
@@ -56,7 +61,8 @@ public:
 
     // Writes current() to path, converting to a non-alpha format first for
     // JPEG targets and resizing to targetSize if it differs from current()'s
-    // size. Returns false and sets *error on failure.
+    // size. Clears the dirty flag and emits imageChanged() on success.
+    // Returns false and sets *error on failure.
     bool saveTo(const QString &path, QSize targetSize, QString *error = nullptr);
 
 signals:

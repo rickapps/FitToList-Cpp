@@ -152,6 +152,34 @@ private slots:
         QCOMPARE(doc.current().size(), afterFirstDrag);  // cancel doesn't revert a committed rotation
     }
 
+    void finalizeStraightenCommitsPendingDragAndEndsSession() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = writeTestImage(dir);
+        QVERIFY(!path.isEmpty());
+
+        ImageDocument doc;
+        QVERIFY(doc.load(path));
+        CanvasWidget canvas;
+        canvas.setDocument(&doc);
+        canvas.resize(400, 200);
+        canvas.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&canvas));
+
+        canvas.startStraighten();
+        // Press and move without releasing - a still-in-flight drag, the way
+        // switching images mid-drag would find it.
+        QTest::mousePress(&canvas, Qt::LeftButton, Qt::NoModifier, QPoint(340, 100));
+        QTest::mouseMove(&canvas, QPoint(340, 150));
+        QVERIFY(canvas.straightenAngle() != 0.0);
+
+        canvas.finalizeStraighten();
+
+        QVERIFY(!canvas.isStraightenActive());
+        QVERIFY(doc.isDirty());
+        QVERIFY(doc.current().size() != QSize(200, 100));
+    }
+
     void doubleClickInsideSelectionEmitsProcessAndSaveRequested() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

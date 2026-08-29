@@ -310,6 +310,18 @@ void CanvasWidget::cancelStraighten() {
     emit interactionChanged();
 }
 
+void CanvasWidget::finalizeStraighten() {
+    if (!straightenActive_) {
+        return;
+    }
+    document_->applyStraighten(straightenAngle_, /*keepBase=*/false);
+    straightenActive_ = false;
+    straightenAngle_ = 0.0;
+    straightenDragHandle_ = StraightenHandle::NoHandle;
+    update();
+    emit interactionChanged();
+}
+
 std::optional<QLineF> CanvasWidget::straightenLinePoints() const {
     if (!straightenActive_ || !document_ || document_->current().isNull()) {
         return std::nullopt;

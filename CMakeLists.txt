@@ -18,6 +18,8 @@ add_library(FitToListCore STATIC
     src/FileNaming.cpp
     src/ImageDocument.h
     src/ImageDocument.cpp
+    src/Config.h
+    src/Config.cpp
 )
 target_include_directories(FitToListCore PUBLIC src)
 target_link_libraries(FitToListCore PUBLIC Qt6::Widgets)
@@ -26,6 +28,14 @@ target_link_libraries(FitToListCore PUBLIC Qt6::Widgets)
 add_library(FitToListUi STATIC
     src/CanvasWidget.h
     src/CanvasWidget.cpp
+    src/DirectoryTreeWidget.h
+    src/DirectoryTreeWidget.cpp
+    src/FolderSelectionDialog.h
+    src/FolderSelectionDialog.cpp
+    src/MaxSizeDialog.h
+    src/MaxSizeDialog.cpp
+    src/ImageTreeWidget.h
+    src/ImageTreeWidget.cpp
 )
 target_include_directories(FitToListUi PUBLIC src)
 target_link_libraries(FitToListUi PUBLIC FitToListCore Qt6::Widgets)

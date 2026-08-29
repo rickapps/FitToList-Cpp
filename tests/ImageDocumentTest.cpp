@@ -18,6 +18,36 @@ class ImageDocumentTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void clear_dropsImageEntirely() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = writeTestImage(dir, 100, 60);
+        QVERIFY(!path.isEmpty());
+
+        ImageDocument doc;
+        QVERIFY(doc.load(path));
+        doc.clear();
+        QVERIFY(doc.current().isNull());
+        QVERIFY(doc.original().isNull());
+        QVERIFY(!doc.isDirty());
+    }
+
+    void saveTo_clearsDirtyFlagOnSuccess() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = writeTestImage(dir, 100, 60);
+        QVERIFY(!path.isEmpty());
+
+        ImageDocument doc;
+        QVERIFY(doc.load(path));
+        doc.rotateRight();
+        QVERIFY(doc.isDirty());
+
+        const QString outPath = dir.path() + "/out.png";
+        QVERIFY(doc.saveTo(outPath, doc.current().size()));
+        QVERIFY(!doc.isDirty());
+    }
+
     void crop_clampsToImageBoundsAndMarksDirty() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
