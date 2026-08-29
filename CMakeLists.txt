@@ -8,9 +8,19 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
 
 qt_standard_project_setup()
+
+# UI-free, unit-testable image/file-naming logic, shared by the app and tests.
+add_library(FitToListCore STATIC
+    src/FileNaming.h
+    src/FileNaming.cpp
+    src/ImageDocument.h
+    src/ImageDocument.cpp
+)
+target_include_directories(FitToListCore PUBLIC src)
+target_link_libraries(FitToListCore PUBLIC Qt6::Widgets)
 
 qt_add_executable(FitToList
     src/main.cpp
@@ -18,4 +28,7 @@ qt_add_executable(FitToList
     src/MainWindow.cpp
 )
 
-target_link_libraries(FitToList PRIVATE Qt6::Widgets)
+target_link_libraries(FitToList PRIVATE FitToListCore Qt6::Widgets)
+
+enable_testing()
+add_subdirectory(tests)
