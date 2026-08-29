@@ -31,6 +31,11 @@ target_link_libraries(FolderSelectionDialogTest PRIVATE FitToListUi FitToListCor
 add_test(NAME FolderSelectionDialogTest COMMAND FolderSelectionDialogTest)
 set_tests_properties(FolderSelectionDialogTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+qt_add_executable(ToolbarIconsTest ToolbarIconsTest.cpp)
+target_link_libraries(ToolbarIconsTest PRIVATE FitToListUi FitToListCore Qt6::Test)
+add_test(NAME ToolbarIconsTest COMMAND ToolbarIconsTest)
+set_tests_properties(ToolbarIconsTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # MainWindow.cpp isn't in a library (it's only ever built once, into the app),
 # so it's compiled directly into this test target too.
 qt_add_executable(MainWindowTest MainWindowTest.cpp ${CMAKE_SOURCE_DIR}/src/MainWindow.cpp)

@@ -9,6 +9,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QToolButton>
 #include <QtTest/QtTest>
 #include <memory>
 
@@ -184,6 +185,46 @@ private slots:
 
         QVERIFY(window.windowTitle().startsWith("b.png"));
         QVERIFY(!canvas->hasSelection());
+    }
+
+    void helpMenuHasUserGuideAndAboutActions() {
+        MainWindow window;
+        QVERIFY(findActionByText(&window, "User Guide"));
+        QVERIFY(findActionByText(&window, "About FitToList"));
+    }
+
+    void toolbarSaveButtonSharesActionWithMenuAndSavesFile() {
+        QTemporaryDir source;
+        QTemporaryDir target;
+        QVERIFY(source.isValid() && target.isValid());
+        QVERIFY(!writeTestImage(source.path(), "a.png", 200, 100).isEmpty());
+
+        MainWindow window;
+        window.resize(700, 500);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        selectFoldersVia(window, source.path(), target.path());
+
+        auto *canvas = window.findChild<CanvasWidget *>();
+        const QSize size = canvas->size();
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, QPoint(size.width() * 0.1, size.height() * 0.1));
+        QTest::mouseMove(canvas, QPoint(size.width() * 0.6, size.height() * 0.6));
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier,
+                             QPoint(size.width() * 0.6, size.height() * 0.6));
+        findActionByText(&window, "&Crop to Selection")->trigger();
+
+        QToolButton *saveButton = nullptr;
+        for (QToolButton *button : window.findChildren<QToolButton *>()) {
+            if (button->defaultAction() && button->defaultAction()->text() == "&Save") {
+                saveButton = button;
+                break;
+            }
+        }
+        QVERIFY(saveButton);
+        saveButton->click();
+
+        QVERIFY(!window.isWindowModified());
+        QCOMPARE(QDir(target.path()).entryList(QDir::Files), QStringList({"a_00.png"}));
     }
 
 private:

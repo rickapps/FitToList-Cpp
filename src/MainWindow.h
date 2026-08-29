@@ -8,6 +8,7 @@
 
 class CanvasWidget;
 class ImageTreeWidget;
+class QAction;
 class QLabel;
 class QPushButton;
 
@@ -31,12 +32,16 @@ private slots:
     void onTreePathSelected(const QString &path);
     void saveCurrentAction();
     void processAndSave();
+    void showUserGuide();
+    void showAbout();
     void updateMessage();
     void updateWindowTitle();
 
 private:
-    void buildMenusAndShortcuts();
+    void buildActions();
     void buildLayout();
+    void buildMenus();
+    void openWithDefaultApp(const QString &path, const QString &title, const QString &notFoundMessage);
     void openFolderInFileManager(const QString &path, const QString &title);
     bool isProcessedImage(const QString &path) const;
     bool hasUnsavedChanges() const;
@@ -56,6 +61,19 @@ private:
     QLabel *sourceFolderLabel_;
     QLabel *targetFolderLabel_;
     QPushButton *maxSizeButton_;
+
+    // Toolbar actions, shared with their menu items (one QAction, two UI
+    // surfaces) - the subset of actions the Python original also puts on its
+    // toolbar. Everything else (Open Source Folder, Max Save Size..., Exit,
+    // Reverse Image, Reset, Process & Save, the hidden Escape binding) stays
+    // menu/shortcut-only, same as the original.
+    QAction *selectFoldersAction_;
+    QAction *openProcessedFolderAction_;
+    QAction *rotateRightAction_;
+    QAction *rotateLeftAction_;
+    QAction *cropAction_;
+    QAction *straightenAction_;
+    QAction *saveAction_;
 
     QString currentPath_;
     QString sourceFolder_;

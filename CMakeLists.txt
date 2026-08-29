@@ -36,6 +36,8 @@ add_library(FitToListUi STATIC
     src/MaxSizeDialog.cpp
     src/ImageTreeWidget.h
     src/ImageTreeWidget.cpp
+    src/ToolbarIcons.h
+    src/ToolbarIcons.cpp
 )
 target_include_directories(FitToListUi PUBLIC src)
 target_link_libraries(FitToListUi PUBLIC FitToListCore Qt6::Widgets)
@@ -47,6 +49,17 @@ qt_add_executable(FitToList
 )
 
 target_link_libraries(FitToList PRIVATE FitToListUi FitToListCore Qt6::Widgets)
+
+# Shipped as a plain file alongside the executable (not a Qt resource) so
+# Help > User Guide can hand its real filesystem path to the OS's default
+# .html handler via QDesktopServices - a bundled qrc: URL isn't reachable by
+# an external browser.
+add_custom_command(
+    TARGET FitToList POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/user_manual.html
+        $<TARGET_FILE_DIR:FitToList>/user_manual.html
+)
 
 enable_testing()
 add_subdirectory(tests)

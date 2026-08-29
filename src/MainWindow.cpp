@@ -1,7 +1,10 @@
 #include "MainWindow.h"
 
 #include <QAction>
+#include <QCoreApplication>
 #include <QDesktopServices>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -13,6 +16,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -24,6 +28,7 @@
 #include "FolderSelectionDialog.h"
 #include "ImageTreeWidget.h"
 #include "MaxSizeDialog.h"
+#include "ToolbarIcons.h"
 
 namespace {
 // Python's f"{angle:+.1f}" - always signed, one decimal place.
@@ -33,6 +38,8 @@ QString formatSignedAngle(double angleDegrees) {
         .arg(QString::number(std::abs(angleDegrees), 'f', 1))
         .arg(QChar(0x00B0));  // degree sign
 }
+
+const char *const kGitHubUrl = "https://github.com/rickapps/FitToList-Cpp";
 }  // namespace
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
@@ -49,8 +56,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     maxWidth_ = config.maxWidth;
     maxHeight_ = config.maxHeight;
 
+    // Created up front (actions and the layout both need to reference them);
+    // buildLayout() reparents them into the splitter it builds.
+    tree_ = new ImageTreeWidget(this);
+    canvas_ = new CanvasWidget(this);
+    canvas_->setDocument(&document_);
+
+    buildActions();
     buildLayout();
-    buildMenusAndShortcuts();
+    buildMenus();
 
     connect(canvas_, &CanvasWidget::interactionChanged, this, &MainWindow::updateMessage);
     connect(canvas_, &CanvasWidget::processAndSaveRequested, this, &MainWindow::processAndSave);
@@ -67,6 +81,49 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     updateWindowTitle();
 }
 
+void MainWindow::buildActions() {
+    selectFoldersAction_ = new QAction("&Select Folders...", this);
+    selectFoldersAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_O));
+    selectFoldersAction_->setIcon(folderIcon());
+    selectFoldersAction_->setToolTip("Select Folders");
+    connect(selectFoldersAction_, &QAction::triggered, this, &MainWindow::selectFolders);
+
+    openProcessedFolderAction_ = new QAction("Open Processed Folder", this);
+    openProcessedFolderAction_->setIcon(openFolderIcon());
+    openProcessedFolderAction_->setToolTip("Open Processed Folder");
+    connect(openProcessedFolderAction_, &QAction::triggered, this, &MainWindow::openProcessedFolder);
+
+    rotateRightAction_ = new QAction("Rotate &Right", this);
+    rotateRightAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+    rotateRightAction_->setIcon(rotateRightIcon());
+    rotateRightAction_->setToolTip("Rotate Right");
+    connect(rotateRightAction_, &QAction::triggered, &document_, &ImageDocument::rotateRight);
+
+    rotateLeftAction_ = new QAction("Rotate &Left", this);
+    rotateLeftAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
+    rotateLeftAction_->setIcon(rotateLeftIcon());
+    rotateLeftAction_->setToolTip("Rotate Left");
+    connect(rotateLeftAction_, &QAction::triggered, &document_, &ImageDocument::rotateLeft);
+
+    cropAction_ = new QAction("&Crop to Selection", this);
+    cropAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
+    cropAction_->setIcon(cropIcon());
+    cropAction_->setToolTip("Crop to Selection");
+    connect(cropAction_, &QAction::triggered, canvas_, &CanvasWidget::cropToSelection);
+
+    straightenAction_ = new QAction("&Straighten", this);
+    straightenAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_A));
+    straightenAction_->setIcon(straightenIcon());
+    straightenAction_->setToolTip("Straighten");
+    connect(straightenAction_, &QAction::triggered, canvas_, &CanvasWidget::toggleStraighten);
+
+    saveAction_ = new QAction("&Save", this);
+    saveAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
+    saveAction_->setIcon(saveIcon());
+    saveAction_->setToolTip("Save");
+    connect(saveAction_, &QAction::triggered, this, &MainWindow::saveCurrentAction);
+}
+
 void MainWindow::buildLayout() {
     auto *central = new QWidget(this);
     auto *layout = new QVBoxLayout(central);
@@ -74,12 +131,34 @@ void MainWindow::buildLayout() {
     layout->setSpacing(0);
 
     auto *folderBar = new QWidget(central);
-    auto *folderForm = new QFormLayout(folderBar);
-    folderForm->setContentsMargins(6, 4, 6, 4);
+    auto *folderBarLayout = new QHBoxLayout(folderBar);
+    folderBarLayout->setContentsMargins(6, 4, 6, 4);
 
-    sourceFolderLabel_ = new QLabel(sourceFolder_, folderBar);
-    targetFolderLabel_ = new QLabel(targetFolder_.isEmpty() ? "Processed folder not set" : targetFolder_, folderBar);
-    maxSizeButton_ = new QPushButton(folderBar);
+    auto *toolbar = new QWidget(folderBar);
+    auto *toolbarLayout = new QHBoxLayout(toolbar);
+    toolbarLayout->setContentsMargins(0, 0, 0, 0);
+    toolbarLayout->setSpacing(2);
+    const QList<QAction *> toolbarActions = {selectFoldersAction_, openProcessedFolderAction_, rotateRightAction_,
+                                              rotateLeftAction_,    cropAction_,                straightenAction_,
+                                              saveAction_};
+    for (QAction *action : toolbarActions) {
+        auto *button = new QToolButton(toolbar);
+        button->setDefaultAction(action);
+        button->setFixedSize(kToolbarButtonSize, kToolbarButtonSize);
+        button->setIconSize(QSize(kToolbarIconSize, kToolbarIconSize));
+        button->setAutoRaise(true);
+        toolbarLayout->addWidget(button);
+    }
+    folderBarLayout->addWidget(toolbar);
+
+    auto *fieldsWidget = new QWidget(folderBar);
+    auto *folderForm = new QFormLayout(fieldsWidget);
+    folderForm->setContentsMargins(0, 0, 0, 0);
+
+    sourceFolderLabel_ = new QLabel(sourceFolder_, fieldsWidget);
+    targetFolderLabel_ =
+        new QLabel(targetFolder_.isEmpty() ? "Processed folder not set" : targetFolder_, fieldsWidget);
+    maxSizeButton_ = new QPushButton(fieldsWidget);
     maxSizeButton_->setFlat(true);
     maxSizeButton_->setCursor(Qt::PointingHandCursor);
     maxSizeButton_->setToolTip("Click to change the max save size");
@@ -89,12 +168,11 @@ void MainWindow::buildLayout() {
     folderForm->addRow("Source:", sourceFolderLabel_);
     folderForm->addRow("Processed:", targetFolderLabel_);
     folderForm->addRow("Max Save Size:", maxSizeButton_);
+    folderBarLayout->addWidget(fieldsWidget, 1);
+
     layout->addWidget(folderBar);
 
     auto *splitter = new QSplitter(Qt::Horizontal, central);
-    tree_ = new ImageTreeWidget(splitter);
-    canvas_ = new CanvasWidget(splitter);
-    canvas_->setDocument(&document_);
     splitter->addWidget(tree_);
     splitter->addWidget(canvas_);
     splitter->setStretchFactor(0, 0);
@@ -108,45 +186,22 @@ void MainWindow::buildLayout() {
     statusBar()->addWidget(statusMessage_, 1);
 }
 
-void MainWindow::buildMenusAndShortcuts() {
+void MainWindow::buildMenus() {
     QMenu *fileMenu = menuBar()->addMenu("&File");
-
-    QAction *selectFoldersAction = fileMenu->addAction("&Select Folders...");
-    selectFoldersAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_O));
-    connect(selectFoldersAction, &QAction::triggered, this, &MainWindow::selectFolders);
-
+    fileMenu->addAction(selectFoldersAction_);
     connect(fileMenu->addAction("Open Source Folder"), &QAction::triggered, this, &MainWindow::openSourceFolder);
-    connect(fileMenu->addAction("Open Processed Folder"), &QAction::triggered, this,
-            &MainWindow::openProcessedFolder);
+    fileMenu->addAction(openProcessedFolderAction_);
     connect(fileMenu->addAction("&Max Save Size..."), &QAction::triggered, this, &MainWindow::editMaxSize);
-
     fileMenu->addSeparator();
-    QAction *saveAction = fileMenu->addAction("&Save");
-    saveAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
-    connect(saveAction, &QAction::triggered, this, &MainWindow::saveCurrentAction);
-
+    fileMenu->addAction(saveAction_);
     fileMenu->addSeparator();
-    QAction *exitAction = fileMenu->addAction("E&xit");
-    connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
+    connect(fileMenu->addAction("E&xit"), &QAction::triggered, this, &QMainWindow::close);
 
     QMenu *actionsMenu = menuBar()->addMenu("&Actions");
-
-    QAction *cropAction = actionsMenu->addAction("&Crop to Selection");
-    cropAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
-    connect(cropAction, &QAction::triggered, canvas_, &CanvasWidget::cropToSelection);
-
-    QAction *straightenAction = actionsMenu->addAction("&Straighten");
-    straightenAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_A));
-    connect(straightenAction, &QAction::triggered, canvas_, &CanvasWidget::toggleStraighten);
-
-    QAction *rotateRightAction = actionsMenu->addAction("Rotate &Right");
-    rotateRightAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
-    connect(rotateRightAction, &QAction::triggered, &document_, &ImageDocument::rotateRight);
-
-    QAction *rotateLeftAction = actionsMenu->addAction("Rotate &Left");
-    rotateLeftAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
-    connect(rotateLeftAction, &QAction::triggered, &document_, &ImageDocument::rotateLeft);
-
+    actionsMenu->addAction(cropAction_);
+    actionsMenu->addAction(straightenAction_);
+    actionsMenu->addAction(rotateRightAction_);
+    actionsMenu->addAction(rotateLeftAction_);
     connect(actionsMenu->addAction("Re&verse Image"), &QAction::triggered, &document_, &ImageDocument::reverse);
 
     QAction *resetAction = actionsMenu->addAction("Rese&t");
@@ -157,6 +212,10 @@ void MainWindow::buildMenusAndShortcuts() {
     QAction *processAndSaveAction = actionsMenu->addAction("&Process && Save");
     processAndSaveAction->setStatusTip("Double-click inside the selection does the same thing");
     connect(processAndSaveAction, &QAction::triggered, this, &MainWindow::processAndSave);
+
+    QMenu *helpMenu = menuBar()->addMenu("&Help");
+    connect(helpMenu->addAction("User Guide"), &QAction::triggered, this, &MainWindow::showUserGuide);
+    connect(helpMenu->addAction("About FitToList"), &QAction::triggered, this, &MainWindow::showAbout);
 
     // Escape isn't a menu item in the Python original either - just a
     // window-wide key binding to dismiss the Straighten tool.
@@ -289,6 +348,44 @@ void MainWindow::processAndSave() {
     }
 }
 
+void MainWindow::showUserGuide() {
+    const QString manualPath = QCoreApplication::applicationDirPath() + "/user_manual.html";
+    openWithDefaultApp(manualPath, "User Guide",
+                       QString("Could not find the user manual:\n%1\n\n"
+                               "It should be installed alongside the FitToList executable.")
+                           .arg(manualPath));
+}
+
+void MainWindow::showAbout() {
+    QDialog dialog(this);
+    dialog.setWindowTitle("About FitToList");
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setSizeConstraint(QLayout::SetFixedSize);
+
+    auto *title = new QLabel("<span style=\"font-size:large; font-weight:bold;\">FitToList</span>", &dialog);
+    layout->addWidget(title);
+
+    auto *description = new QLabel("A desktop tool for quickly cropping and resizing photos in a folder.", &dialog);
+    description->setWordWrap(true);
+    description->setMaximumWidth(320);
+    layout->addWidget(description);
+
+    auto *credit = new QLabel("Designed by Rickapps. All code and documentation generated by Claude Code.", &dialog);
+    credit->setWordWrap(true);
+    credit->setMaximumWidth(320);
+    layout->addWidget(credit);
+
+    auto *link = new QLabel(QString("<a href=\"%1\">%1</a>").arg(kGitHubUrl), &dialog);
+    link->setOpenExternalLinks(true);
+    layout->addWidget(link);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    dialog.exec();
+}
+
 void MainWindow::updateMessage() {
     if (canvas_->isStraightenActive()) {
         statusMessage_->setText(QString("Straighten: %1   |   Drag either end of the line to straighten, "
@@ -322,14 +419,18 @@ void MainWindow::updateWindowTitle() {
     setWindowModified(document_.isDirty());
 }
 
-void MainWindow::openFolderInFileManager(const QString &path, const QString &title) {
+void MainWindow::openWithDefaultApp(const QString &path, const QString &title, const QString &notFoundMessage) {
     if (!QFileInfo::exists(path)) {
-        QMessageBox::critical(this, title, QString("Folder not found:\n%1").arg(path));
+        QMessageBox::critical(this, title, notFoundMessage);
         return;
     }
     if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
         QMessageBox::critical(this, title, QString("Could not open:\n%1").arg(path));
     }
+}
+
+void MainWindow::openFolderInFileManager(const QString &path, const QString &title) {
+    openWithDefaultApp(path, title, QString("Folder not found:\n%1").arg(path));
 }
 
 bool MainWindow::isProcessedImage(const QString &path) const {
