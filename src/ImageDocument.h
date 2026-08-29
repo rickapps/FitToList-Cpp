@@ -60,7 +60,15 @@ public:
     bool saveTo(const QString &path, QSize targetSize, QString *error = nullptr);
 
 signals:
+    // Emitted by every mutator (crop/rotate/reverse/reset/applyStraighten):
+    // "the pixels changed, redraw and re-check dirty state."
     void imageChanged();
+
+    // Emitted only by load(): "this is an entirely new image," so listeners
+    // should also drop any interaction state tied to the previous one (a
+    // pending crop selection, an open straighten session) rather than just
+    // clearing the crop selection the way imageChanged()'s handler does.
+    void imageLoaded();
 
 private:
     QImage original_;

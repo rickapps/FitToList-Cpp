@@ -49,7 +49,7 @@ bool ImageDocument::load(const QString &path, QString *error) {
     dirty_ = false;
     straightenBase_ = QImage();
     straightenTotalAngle_ = 0.0;
-    emit imageChanged();
+    emit imageLoaded();
     return true;
 }
 

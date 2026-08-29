@@ -22,13 +22,21 @@ add_library(FitToListCore STATIC
 target_include_directories(FitToListCore PUBLIC src)
 target_link_libraries(FitToListCore PUBLIC Qt6::Widgets)
 
+# Reusable widgets, built on FitToListCore.
+add_library(FitToListUi STATIC
+    src/CanvasWidget.h
+    src/CanvasWidget.cpp
+)
+target_include_directories(FitToListUi PUBLIC src)
+target_link_libraries(FitToListUi PUBLIC FitToListCore Qt6::Widgets)
+
 qt_add_executable(FitToList
     src/main.cpp
     src/MainWindow.h
     src/MainWindow.cpp
 )
 
-target_link_libraries(FitToList PRIVATE FitToListCore Qt6::Widgets)
+target_link_libraries(FitToList PRIVATE FitToListUi FitToListCore Qt6::Widgets)
 
 enable_testing()
 add_subdirectory(tests)
