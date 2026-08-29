@@ -11,3 +11,10 @@ target_link_libraries(CanvasWidgetTest PRIVATE FitToListUi FitToListCore Qt6::Te
 add_test(NAME CanvasWidgetTest COMMAND CanvasWidgetTest)
 # Runs without a real display/window manager, so it works in headless CI too.
 set_tests_properties(CanvasWidgetTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# MainWindow.cpp isn't in a library (it's only ever built once, into the app),
+# so it's compiled directly into this test target too.
+qt_add_executable(MainWindowTest MainWindowTest.cpp ${CMAKE_SOURCE_DIR}/src/MainWindow.cpp)
+target_link_libraries(MainWindowTest PRIVATE FitToListUi FitToListCore Qt6::Test)
+add_test(NAME MainWindowTest COMMAND MainWindowTest)
+set_tests_properties(MainWindowTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
