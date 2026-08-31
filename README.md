@@ -33,6 +33,16 @@ cmake --build build
 ./build/FitToList
 ```
 
+On Windows, where Qt isn't found via a system package manager, use the `windows` CMake preset instead (see `CMakePresets.json`), which points `CMAKE_PREFIX_PATH` at a Qt kit and selects the Ninja generator:
+
+```bash
+cmake --preset windows
+cmake --build --preset windows
+./build/FitToList.exe
+```
+
+Edit the path in `CMakePresets.json` (or add a git-ignored `CMakeUserPresets.json` inheriting from it) if your Qt kit lives somewhere other than `E:/Qt/6.11.2/mingw_64`.
+
 On first launch, use **File > Select Folders...** to choose a source folder (where your original images live) and a processed folder (where edited copies will be written). For the full walkthrough of every feature, see [`user_manual.html`](user_manual.html) or open it from inside the app via **Help > User Guide**.
 
 ### Running the tests
@@ -41,6 +51,7 @@ Unlike the Python original (a GUI script with no automated tests), this port has
 
 ```bash
 ctest --test-dir build --output-on-failure
+# or, on Windows: ctest --preset windows
 ```
 
 ## For developers

@@ -52,6 +52,12 @@ Makefile
 install_manifest.txt
 compile_commands.json
 
+# CMake user-specific presets (personal machine overrides, not for version control)
+CMakeUserPresets.json
+
+# Editor-specific config (machine-specific paths, e.g. compilerPath)
+.vscode/
+
 # Temporary files
 *.tmp
 *.log

@@ -8,6 +8,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# On Linux, package-manager Qt installs are found automatically. On Windows
+# (no system package manager for Qt), point CMAKE_PREFIX_PATH at your Qt kit
+# via a CMake preset (see CMakePresets.json) or -DCMAKE_PREFIX_PATH=... .
 find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
 
 qt_standard_project_setup()
