@@ -29,6 +29,22 @@ ctest --preset windows
 
 The preset assumes Qt 6.11.2's MinGW kit at `E:/Qt/6.11.2/mingw_64`, plus `cmake`/`ninja`/`g++`/`mingw32-make` from Qt's bundled `Tools/CMake_64`, `Tools/Ninja`, and `Tools/mingw1310_64` directories (added to this machine's user `PATH`). If Qt lives elsewhere, edit the path in `CMakePresets.json` or add a git-ignored `CMakeUserPresets.json` that inherits from it instead — don't hardcode a machine-specific path back into `CMakeLists.txt` itself, since that's what previously broke the Linux build path (`CMAKE_PREFIX_PATH`/`Qt6_DIR` were unconditionally set to a Windows-only path there before this was fixed).
 
+### Building with Visual Studio (MSIX packaging work)
+
+The `windows-msvc` preset builds with real MSVC instead of MinGW, generating a `.sln`/`.vcxproj` tree under `build-msvc/` that Visual Studio can open directly — needed because a Windows Application Packaging (MSIX) project has to live in a proper VS solution alongside the app's `.vcxproj`, which the MinGW+Ninja preset can't produce. It requires Qt's **MSVC 2022 64-bit** kit (`E:/Qt/6.11.2/msvc2022_64`), installed separately from the MinGW kit via the Qt Maintenance Tool — Qt binaries aren't ABI-compatible across MinGW and MSVC, so the MinGW kit can't be linked from an MSVC build.
+
+This machine's Visual Studio install is version 18 (2026), which the system-wide `cmake` (3.30.5, from Qt's bundled `Tools/CMake_64`) doesn't recognize — configuring `windows-msvc` needs the newer CMake bundled inside Visual Studio itself:
+
+```bash
+VSCMAKE="/c/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin"
+"$VSCMAKE/cmake.exe" --preset windows-msvc
+"$VSCMAKE/cmake.exe" --build build-msvc --config Debug
+```
+
+Test binaries built this way link Qt's MSVC DLLs, which aren't on `PATH` by default (unlike the MinGW kit's `bin` dir, which already is) — add `E:/Qt/6.11.2/msvc2022_64/bin` to `PATH` before running `ctest`/the exes directly, or the tests fail immediately with exit code `0xc0000135` (`STATUS_DLL_NOT_FOUND`).
+
+If a future Visual Studio upgrade changes the installed version, update the `generator` field in the `windows-msvc` preset (`CMakePresets.json`) to match — CMake's Visual Studio generator name is tied to the specific VS version and errors with "could not find any instance of Visual Studio" if it doesn't match what's installed.
+
 To run a single test binary directly (all tests link `Qt6::Test` / `QTest`, so standard QTest CLI flags work, e.g. `TestName::testFunction` to run one test case):
 
 ```bash

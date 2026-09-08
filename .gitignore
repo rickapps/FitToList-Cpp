@@ -57,6 +57,7 @@ CMakeUserPresets.json
 
 # Editor-specific config (machine-specific paths, e.g. compilerPath)
 .vscode/
+.vs/
 
 # Temporary files
 *.tmp
