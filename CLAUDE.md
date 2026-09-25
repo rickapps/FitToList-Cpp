@@ -45,6 +45,46 @@ Test binaries built this way link Qt's MSVC DLLs, which aren't on `PATH` by defa
 
 If a future Visual Studio upgrade changes the installed version, update the `generator` field in the `windows-msvc` preset (`CMakePresets.json`) to match — CMake's Visual Studio generator name is tied to the specific VS version and errors with "could not find any instance of Visual Studio" if it doesn't match what's installed.
 
+### MSIX packaging
+
+`packaging/msix/` (added via `add_subdirectory` under `if(WIN32)` in the top-level `CMakeLists.txt`) builds an unsigned `FitToList.msix` from the `FitToList` build — a CMake-driven alternative to a Visual Studio Windows Application Packaging (`.wapproj`) project, since CMake has no target type that maps to one. It's not part of the default build; invoke it explicitly:
+
+```bash
+VSCMAKE="/c/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin"
+"$VSCMAKE/cmake.exe" --build build-msvc --config Debug --target msix
+```
+
+This stages `FitToList.exe` plus its Qt runtime (via `windeployqt`), procedurally-drawn logo assets (`GenerateAppIcon.cpp`, same no-bundled-image-assets approach as `ToolbarIcons.cpp`), and a `configure_file`d `AppxManifest.xml` into `build-msvc/packaging/msix/staging/`, then packs it with `makeappx` into `build-msvc/FitToList.msix`. Package identity (`MSIX_PACKAGE_NAME`, `MSIX_PUBLISHER`, `MSIX_PUBLISHER_DISPLAY_NAME`) are CMake cache variables, defaulted to `FitToList` / `CN=Rick Eichhorn` / `Rick Eichhorn` — override with `-D` if these ever need to change (e.g. before a real Store submission, where `MSIX_PUBLISHER` must exactly match whatever certificate signs the package).
+
+**Signing** is deliberately left out of the CMake build — it means either touching this machine's certificate store or handling a real code-signing credential, both of which are the user's call, not something to automate. The package is unsigned as produced; to sideload it locally for testing:
+
+```powershell
+# One-time: create and trust a self-signed cert matching MSIX_PUBLISHER exactly (CN=Rick Eichhorn)
+$cert = New-SelfSignedCertificate -Type Custom -Subject "CN=Rick Eichhorn" -KeyUsage DigitalSignature `
+    -FriendlyName "FitToList dev signing" -CertStoreLocation "Cert:\CurrentUser\My" `
+    -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+Export-Certificate -Cert $cert -FilePath FitToList-dev.cer
+Import-Certificate -FilePath FitToList-dev.cer -CertStoreLocation "Cert:\LocalMachine\TrustedPeople"  # needs an elevated prompt
+
+# Then sign each rebuilt package (repeat this line only; the cert above is one-time)
+& "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" sign /fd SHA256 /a /s My /n "Rick Eichhorn" build-msvc\FitToList.msix
+
+# Sideloading also requires Settings > Privacy & security > For developers > Developer Mode to be on.
+Add-AppxPackage -Path build-msvc\FitToList.msix
+```
+
+Verified working end-to-end on this machine (Sept 2026), but with an already-existing cert instead of a freshly-created `CN=Rick Eichhorn` one — this app has been associated with a Windows Store listing (via Visual Studio's "Associate App with the Store" flow), which assigns a Store-issued Publisher identity with a GUID `Subject` (e.g. `CN=4C77B1CF-092B-4455-BBFC-00F9EBC71825`) rather than a plain personal name. Since a real Store submission has to carry that exact reserved identity anyway, `MSIX_PUBLISHER` (and `MSIX_PACKAGE_NAME`/`MSIX_PUBLISHER_DISPLAY_NAME`) should eventually be set to match the Store-reserved values permanently rather than the `CN=Rick Eichhorn` placeholder default — see whether that's been done yet before assuming the placeholder is still current. Until then, override at configure time to match whatever cert is actually being signed with:
+
+```bash
+"$VSCMAKE/cmake.exe" -S . -B build-msvc -DMSIX_PUBLISHER="CN=<your cert's exact Subject>"
+```
+
+When multiple certs share a `Subject` (VS regenerates one each time you use that dialog without reusing an existing cert — check with `Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert`), sign by exact thumbprint rather than by name to avoid ambiguity:
+
+```powershell
+signtool sign /fd SHA256 /sha1 <thumbprint> build-msvc\FitToList.msix
+```
+
 To run a single test binary directly (all tests link `Qt6::Test` / `QTest`, so standard QTest CLI flags work, e.g. `TestName::testFunction` to run one test case):
 
 ```bash

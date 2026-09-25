@@ -19,7 +19,7 @@ A desktop photo editor for quickly cropping and resizing multiple images in a fo
 - Persisted settings (source/processed folders, max save size) between sessions
 - Toolbar buttons for the most common actions, plus a full File/Actions/Help menu and an in-app User Guide
 
-Not yet done: packaging/installers (running from a build directory only, for now).
+Packaging: a Windows MSIX package can be built, signed, and installed via CMake (see `packaging/msix/` and CLAUDE.md) — verified working end-to-end for local sideloading with a self-signed dev certificate. Public distribution (Store or otherwise) would still need a real code-signing identity. No Linux/macOS packaging yet.
 
 ## Building
 

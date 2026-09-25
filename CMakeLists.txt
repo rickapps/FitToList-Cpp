@@ -64,5 +64,9 @@ add_custom_command(
         $<TARGET_FILE_DIR:FitToList>/user_manual.html
 )
 
+if(WIN32)
+    add_subdirectory(packaging/msix)
+endif()
+
 enable_testing()
 add_subdirectory(tests)
